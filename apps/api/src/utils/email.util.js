@@ -1217,7 +1217,7 @@ const sendQueuePositionUpdateEmail = async (recipientEmail, patientName, queuePo
   }
 };
 
-module.exports = {
+export{
   verifyEmailTransporter,
   isSmtpConfigured,
   isSmtpVerified,
