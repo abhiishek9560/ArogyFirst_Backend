@@ -1,47 +1,79 @@
 /**
  * Email Utility for ArogyaFirst
  * 
- * Provides email notification services using Resend API
- * (Uses API instead of SMTP to work with Render.com which blocks SMTP ports)
+ * Provides email notification services using Resend API for OTP emails
+ * and nodemailer SMTP fallback for other notifications
+ * (Uses Resend API for critical OTP emails to work with Render.com which blocks SMTP ports)
  * 
  * Environment Variables:
- * - RESEND_API_KEY: Resend API key (e.g., re_xxxxxxxxxxxx)
+ * - RESEND_API_KEY: Resend API key (e.g., re_xxxxxxxxxxxx) - for OTP emails
  * - EMAIL_FROM: Sender email address (e.g., onboarding@resend.dev or noreply@arogyafirst.com)
  */
 
 const { Resend } = require('resend');
+const nodemailer = require('nodemailer');
 const { formatDateForDisplay, PO_STATUS } = require('@arogyafirst/shared');
 
-// Initialize Resend with API key
+// Initialize Resend with API key for OTP emails
 const resend = new Resend(process.env.RESEND_API_KEY);
+
+// Keep nodemailer transporter for backwards compatibility with other email functions
+const transporter = nodemailer.createTransport({
+  host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+  port: parseInt(process.env.EMAIL_PORT, 10) || 587,
+  secure: process.env.EMAIL_SECURE === 'true',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
 
 // Track whether email service is properly configured
 let emailConfigured = false;
 let emailVerified = false;
+let smtpConfigured = false;
 
 /**
- * Verify Resend API configuration
- * Logs status and checks if email sending will work
+ * Verify email configuration
+ * Checks Resend API for OTP emails and SMTP for other notifications
  */
 const verifyEmailTransporter = async () => {
   const apiKey = process.env.RESEND_API_KEY;
   const emailFrom = process.env.EMAIL_FROM;
+  const emailUser = process.env.EMAIL_USER;
+  const emailPass = process.env.EMAIL_PASS;
 
-  console.log('📧 Email Configuration (Resend API):');
-  console.log(`   API Key: ${apiKey ? '(configured)' : '(not set)'}`);
+  console.log('📧 Email Configuration:');
+  console.log(`   Resend API Key: ${apiKey ? '(configured)' : '(not set)'}`);
   console.log(`   From: ${emailFrom || '(using default: onboarding@resend.dev)'}`);
+  console.log(`   SMTP User: ${emailUser ? '(configured)' : '(not set)'}`);
+  console.log(`   SMTP Pass: ${emailPass ? '(configured)' : '(not set)'}`);
 
-  // Check if API key is provided
-  if (!apiKey) {
-    console.warn('⚠️  Resend API key not configured. Emails will be logged to console in development mode.');
-    emailConfigured = false;
-    return false;
+  // Check Resend API for OTP emails
+  if (apiKey) {
+    emailConfigured = true;
+    emailVerified = true;
+    console.log('✅ Resend Email API configured successfully (for OTP emails)');
+  } else {
+    console.warn('⚠️  Resend API key not configured. OTP emails will be logged to console.');
   }
 
-  emailConfigured = true;
-  emailVerified = true;
-  console.log('✅ Resend Email API configured successfully');
-  return true;
+  // Check SMTP for other notifications
+  if (emailUser && emailPass) {
+    smtpConfigured = true;
+    try {
+      await transporter.verify();
+      console.log('✅ SMTP transporter verified successfully (for notification emails)');
+    } catch (error) {
+      console.warn('⚠️  SMTP verification failed:', error.message);
+      smtpConfigured = false;
+    }
+  } else {
+    console.warn('⚠️  SMTP credentials not configured. Notification emails will be logged to console.');
+    smtpConfigured = false;
+  }
+
+  return emailConfigured || smtpConfigured;
 };
 
 /**
@@ -1185,4 +1217,21 @@ const sendQueuePositionUpdateEmail = async (recipientEmail, patientName, queuePo
   }
 };
 
-module.exports = nodemailer;
+module.exports = {
+  verifyEmailTransporter,
+  isSmtpConfigured,
+  isSmtpVerified,
+  generateOTP,
+  validateOTPFormat,
+  sendOTPEmail,
+  sendReferralStatusEmail,
+  sendReferralStatusEmailBulk,
+  sendReschedulingNotificationEmail,
+  sendLabReportNotificationEmail,
+  sendPOApprovalEmail,
+  sendPOReceivedEmail,
+  sendPOCancelledEmail,
+  sendContactFormEmail,
+  sendBedAvailabilityNotificationEmail,
+  sendQueuePositionUpdateEmail,
+};
