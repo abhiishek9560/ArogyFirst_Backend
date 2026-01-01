@@ -10,9 +10,9 @@
  * - EMAIL_FROM: Sender email address (e.g., onboarding@resend.dev or noreply@arogyafirst.com)
  */
 
-const { Resend } = require('resend');
-const nodemailer = require('nodemailer');
-const { formatDateForDisplay, PO_STATUS } = require('@arogyafirst/shared');
+import { Resend } from 'resend';
+import nodemailer from 'nodemailer';
+import { formatDateForDisplay, PO_STATUS } from '@arogyafirst/shared';
 
 // Initialize Resend with API key for OTP emails
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -1217,7 +1217,7 @@ const sendQueuePositionUpdateEmail = async (recipientEmail, patientName, queuePo
   }
 };
 
-export{
+export {
   verifyEmailTransporter,
   isSmtpConfigured,
   isSmtpVerified,
