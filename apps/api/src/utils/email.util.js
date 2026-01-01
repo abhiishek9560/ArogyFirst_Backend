@@ -1,99 +1,66 @@
 /**
  * Email Utility for ArogyaFirst
  * 
- * Provides email notification services for the application.
- * 
- * PRODUCTION SETUP: Configure nodemailer with actual SMTP credentials
- * - Set environment variables: EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS, EMAIL_FROM
- * - For production, use SendGrid, AWS SES, or similar service
+ * Provides email notification services using Resend API
+ * (Uses API instead of SMTP to work with Render.com which blocks SMTP ports)
  * 
  * Environment Variables:
- * - EMAIL_HOST: SMTP host (e.g., smtp.sendgrid.net, email-smtp.us-east-1.amazonaws.com)
- * - EMAIL_PORT: SMTP port (587 for TLS, 465 for SSL)
- * - EMAIL_SECURE: 'true' for SSL, 'false' for TLS
- * - EMAIL_USER: SMTP username/API key
- * - EMAIL_PASS: SMTP password/API secret
- * - EMAIL_FROM: Sender email address (e.g., noreply@arogyafirst.com)
+ * - RESEND_API_KEY: Resend API key (e.g., re_xxxxxxxxxxxx)
+ * - EMAIL_FROM: Sender email address (e.g., onboarding@resend.dev or noreply@arogyafirst.com)
  */
 
-import nodemailer from 'nodemailer';
-import { formatDateForDisplay, PO_STATUS } from '@arogyafirst/shared';
+const { Resend } = require('resend');
+const { formatDateForDisplay, PO_STATUS } = require('@arogyafirst/shared');
 
-// Track whether SMTP is properly configured
-let smtpConfigured = false;
-let smtpVerified = false;
+// Initialize Resend with API key
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-/**
- * Email transporter configuration
- * Creates a nodemailer transporter with SMTP settings from environment variables
- */
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.EMAIL_PORT, 10) || 587,
-  secure: process.env.EMAIL_SECURE === 'true',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+// Track whether email service is properly configured
+let emailConfigured = false;
+let emailVerified = false;
 
 /**
- * Verify SMTP transporter configuration
+ * Verify Resend API configuration
  * Logs status and checks if email sending will work
  */
-export const verifyEmailTransporter = async () => {
-  const emailHost = process.env.EMAIL_HOST;
-  const emailPort = process.env.EMAIL_PORT;
-  const emailUser = process.env.EMAIL_USER;
-  const emailPass = process.env.EMAIL_PASS;
+const verifyEmailTransporter = async () => {
+  const apiKey = process.env.RESEND_API_KEY;
+  const emailFrom = process.env.EMAIL_FROM;
 
-  console.log('📧 Email Configuration:');
-  console.log(`   Host: ${emailHost || '(not set - using smtp.gmail.com)'}`);
-  console.log(`   Port: ${emailPort || '(not set - using 587)'}`);
-  console.log(`   Secure: ${process.env.EMAIL_SECURE === 'true' ? 'SSL' : 'TLS'}`);
-  console.log(`   User: ${emailUser ? '(configured)' : '(not set)'}`);
-  console.log(`   Pass: ${emailPass ? '(configured)' : '(not set)'}`);
+  console.log('📧 Email Configuration (Resend API):');
+  console.log(`   API Key: ${apiKey ? '(configured)' : '(not set)'}`);
+  console.log(`   From: ${emailFrom || '(using default: onboarding@resend.dev)'}`);
 
-  // Check if basic credentials are provided
-  if (!emailUser || !emailPass) {
-    console.warn('⚠️  Email SMTP credentials not configured. Emails will be logged to console in development mode.');
-    smtpConfigured = false;
+  // Check if API key is provided
+  if (!apiKey) {
+    console.warn('⚠️  Resend API key not configured. Emails will be logged to console in development mode.');
+    emailConfigured = false;
     return false;
   }
 
-  smtpConfigured = true;
-
-  // Verify transporter connection
-  try {
-    await transporter.verify();
-    console.log('✅ Email SMTP transporter verified successfully');
-    smtpVerified = true;
-    return true;
-  } catch (error) {
-    console.error('❌ Email SMTP transporter verification failed:', error.message);
-    console.error('   Email sending may not work. Please check your SMTP credentials.');
-    smtpVerified = false;
-    return false;
-  }
+  emailConfigured = true;
+  emailVerified = true;
+  console.log('✅ Resend Email API configured successfully');
+  return true;
 };
 
 /**
- * Check if SMTP is properly configured
- * @returns {boolean} True if SMTP credentials are set
+ * Check if email service is properly configured
+ * @returns {boolean} True if API key is set
  */
-export const isSmtpConfigured = () => smtpConfigured;
+const isSmtpConfigured = () => emailConfigured;
 
 /**
- * Check if SMTP transporter was verified successfully
- * @returns {boolean} True if transporter verification passed
+ * Check if email service was verified successfully
+ * @returns {boolean} True if configuration passed
  */
-export const isSmtpVerified = () => smtpVerified;
+const isSmtpVerified = () => emailVerified;
 
 /**
  * Generate a 6-digit OTP code
  * @returns {string} 6-digit OTP as string (preserves leading zeros)
  */
-export const generateOTP = () => {
+const generateOTP = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
@@ -102,7 +69,7 @@ export const generateOTP = () => {
  * @param {string} otp - OTP to validate
  * @returns {boolean} True if valid format
  */
-export const validateOTPFormat = (otp) => {
+const validateOTPFormat = (otp) => {
   return /^\d{6}$/.test(otp);
 };
 
@@ -113,7 +80,7 @@ export const validateOTPFormat = (otp) => {
  * @param {string} purpose - 'EMAIL_VERIFICATION' or 'PASSWORD_RESET'
  * @returns {Promise<{success: boolean, messageId?: string, error?: string}>}
  */
-export const sendOTPEmail = async (toEmail, otp, purpose = 'EMAIL_VERIFICATION') => {
+const sendOTPEmail = async (toEmail, otp, purpose = 'EMAIL_VERIFICATION') => {
   try {
     if (!toEmail) {
       console.warn('No email address provided for OTP');
@@ -185,9 +152,9 @@ export const sendOTPEmail = async (toEmail, otp, purpose = 'EMAIL_VERIFICATION')
       </html>
     `;
 
-    // Check if email credentials are configured
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      console.log('📧 OTP Email (Development Mode - SMTP not configured):');
+    // Check if Resend API key is configured
+    if (!process.env.RESEND_API_KEY) {
+      console.log('📧 OTP Email (Development Mode - Resend API not configured):');
       console.log('To:', toEmail);
       console.log('Subject:', subject);
       console.log('OTP:', otp);
@@ -196,16 +163,21 @@ export const sendOTPEmail = async (toEmail, otp, purpose = 'EMAIL_VERIFICATION')
       return { success: true, placeholder: true, otp }; // Return OTP for development testing
     }
 
-    const mailOptions = {
-      from: process.env.EMAIL_FROM || 'noreply@arogyafirst.com',
+    // Send via Resend API
+    const response = await resend.emails.send({
+      from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
       to: toEmail,
       subject,
       html: htmlBody,
-    };
+    });
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log('OTP email sent successfully:', info.messageId);
-    return { success: true, messageId: info.messageId };
+    if (response.error) {
+      console.error('Failed to send OTP email via Resend:', response.error);
+      return { success: false, error: response.error.message };
+    }
+
+    console.log('✅ OTP email sent successfully via Resend:', response.data.id);
+    return { success: true, messageId: response.data.id };
 
   } catch (error) {
     console.error('Failed to send OTP email:', error);
@@ -223,7 +195,7 @@ export const sendOTPEmail = async (toEmail, otp, purpose = 'EMAIL_VERIFICATION')
  * @param {string} reason - Optional reason for rejection/cancellation
  * @param {string} notes - Optional notes for acceptance
  */
-export const sendReferralStatusEmail = async (toEmail, referral, eventType, reason = '', notes = '') => {
+const sendReferralStatusEmail = async (toEmail, referral, eventType, reason = '', notes = '') => {
   try {
     if (!toEmail) {
       console.warn('No email address provided for referral notification');
@@ -376,7 +348,7 @@ const getEmailBody = (referral, eventType, reason, notes) => {
  * @param {string} reason - Optional reason
  * @param {string} notes - Optional notes
  */
-export const sendReferralStatusEmailBulk = async (emails, referral, eventType, reason = '', notes = '') => {
+const sendReferralStatusEmailBulk = async (emails, referral, eventType, reason = '', notes = '') => {
   const results = await Promise.allSettled(
     emails.map(email => sendReferralStatusEmail(email, referral, eventType, reason, notes))
   );
@@ -398,7 +370,7 @@ export const sendReferralStatusEmailBulk = async (emails, referral, eventType, r
  * @param {string} rescheduleReason - Optional reason for rescheduling
  * @returns {Promise<{success: boolean, messageId?: string, error?: string}>}
  */
-export const sendReschedulingNotificationEmail = async (toEmail, booking, oldBookingDetails, rescheduleReason = '') => {
+const sendReschedulingNotificationEmail = async (toEmail, booking, oldBookingDetails, rescheduleReason = '') => {
   try {
     if (!toEmail) {
       console.warn('No email address provided for rescheduling notification');
@@ -518,7 +490,7 @@ export const sendReschedulingNotificationEmail = async (toEmail, booking, oldBoo
  * @param {string} labName - Name of the lab that uploaded the report
  * @returns {Promise<{success: boolean, messageId?: string, error?: string}>}
  */
-export const sendLabReportNotificationEmail = async (toEmail, booking, reportTitle, labName) => {
+const sendLabReportNotificationEmail = async (toEmail, booking, reportTitle, labName) => {
   try {
     if (!toEmail) {
       console.warn('No email address provided for lab report notification');
@@ -624,7 +596,7 @@ export const sendLabReportNotificationEmail = async (toEmail, booking, reportTit
 /**
  * Send Purchase Order Approval Email
  */
-export const sendPOApprovalEmail = async (toEmail, purchaseOrder, pharmacyName) => {
+const sendPOApprovalEmail = async (toEmail, purchaseOrder, pharmacyName) => {
   try {
     if (!toEmail) {
       return { success: false, error: 'Email address is required' };
@@ -739,7 +711,7 @@ export const sendPOApprovalEmail = async (toEmail, purchaseOrder, pharmacyName) 
 /**
  * Send Purchase Order Received Email
  */
-export const sendPOReceivedEmail = async (toEmail, purchaseOrder, pharmacyName, receivedItems) => {
+const sendPOReceivedEmail = async (toEmail, purchaseOrder, pharmacyName, receivedItems) => {
   try {
     if (!toEmail) {
       return { success: false, error: 'Email address is required' };
@@ -851,7 +823,7 @@ export const sendPOReceivedEmail = async (toEmail, purchaseOrder, pharmacyName, 
 /**
  * Send Purchase Order Cancelled Email
  */
-export const sendPOCancelledEmail = async (toEmail, purchaseOrder, pharmacyName, reason) => {
+const sendPOCancelledEmail = async (toEmail, purchaseOrder, pharmacyName, reason) => {
   try {
     if (!toEmail) {
       return { success: false, error: 'Email address is required' };
@@ -943,7 +915,7 @@ export const sendPOCancelledEmail = async (toEmail, purchaseOrder, pharmacyName,
  * @param {string} formData.message - User's message
  * @returns {Promise<{success: boolean, messageId?: string, error?: string}>}
  */
-export const sendContactFormEmail = async (formData) => {
+const sendContactFormEmail = async (formData) => {
   try {
     const { name, email, subject, message } = formData;
     const supportEmail = process.env.SUPPORT_EMAIL || 'support@arogyafirst.com';
@@ -1050,7 +1022,7 @@ export const sendContactFormEmail = async (formData) => {
  * @param {Object} booking - Booking object with assigned bed details
  * @param {String} hospitalName - Hospital name
  */
-export const sendBedAvailabilityNotificationEmail = async (recipientEmail, booking, hospitalName) => {
+const sendBedAvailabilityNotificationEmail = async (recipientEmail, booking, hospitalName) => {
   try {
     const patientName = booking.patientSnapshot?.name || 'Patient';
     const bedNumber = booking.assignedBed?.bedNumber || 'N/A';
@@ -1149,7 +1121,7 @@ export const sendBedAvailabilityNotificationEmail = async (recipientEmail, booki
  * @param {String} estimatedWaitTime - Estimated wait time string
  * @param {String} hospitalName - Hospital name
  */
-export const sendQueuePositionUpdateEmail = async (recipientEmail, patientName, queuePosition, estimatedWaitTime, hospitalName) => {
+const sendQueuePositionUpdateEmail = async (recipientEmail, patientName, queuePosition, estimatedWaitTime, hospitalName) => {
   try {
     const htmlBody = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
@@ -1212,3 +1184,5 @@ export const sendQueuePositionUpdateEmail = async (recipientEmail, patientName, 
     return { success: false, error: error.message };
   }
 };
+
+module.exports = nodemailer;
