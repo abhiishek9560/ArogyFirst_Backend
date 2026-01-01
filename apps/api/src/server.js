@@ -85,7 +85,7 @@ connectDB().then(async () => {
   }
 
   // Verify email transporter configuration
-  await verifyEmailTransporter();
+  //await verifyEmailTransporter();
 
   // Verify SMS transporter configuration
   await verifySMSTransporter();
@@ -114,8 +114,8 @@ const corsOptions = {
   credentials: true
 };
 
-app.use(helmet());
 app.use(cors(corsOptions));
+app.use(helmet());
 app.use(morgan('dev'));
 
 // CRITICAL: Mount webhook routes BEFORE express.json() to capture raw body
